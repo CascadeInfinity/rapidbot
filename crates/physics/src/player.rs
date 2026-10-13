@@ -13,7 +13,7 @@
 //! sweet berry bushes and powder snow (stuck multipliers), honey (sliding),
 //! bubble columns, and slime's slowdown when stepped on.
 //!
-//! Not yet: creative flight, riding, powder snow's and scaffolding's
+//! Not yet: riding, powder snow's and scaffolding's
 //! context-dependent collision shapes, entity collisions, world border,
 //! firework boosts, dolphin's grace, suffocation push-out
 //! (`moveTowardsClosestSpace`).
