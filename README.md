@@ -1,5 +1,5 @@
 # rapidbot
-
+[![creator1116/rapidbot, explained in a one-minute video](https://gitdiagram.com/api/video/file?username=creator1116&repo=rapidbot&format=poster)](https://gitdiagram.com/creator1116/rapidbot/video)
 A headless Minecraft Java Edition bot framework in Rust, built from scratch to
 behave exactly like the vanilla client: byte-exact on the wire, tick-exact in
 physics and timing. 
