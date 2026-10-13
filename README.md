@@ -116,4 +116,3 @@ write our own implementation, and never commit anything under `vanilla/`.
 Run bots only on servers where you are allowed to. See the
 [Code of Conduct](CODE_OF_CONDUCT.md). MIT licensed: see [LICENSE](LICENSE).
 
-https://ace.nether.bio
