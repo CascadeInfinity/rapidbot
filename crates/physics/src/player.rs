@@ -186,6 +186,12 @@ pub struct Player {
     /// Set on the tick gliding starts; the client sends
     /// `player_command(START_FALL_FLYING)` and clears it.
     pub started_fall_flying: bool,
+    /// `jumpTriggerTime`: ticks left in the window where a second jump
+    /// press toggles creative flight.
+    jump_trigger_time: i32,
+    /// Set when `onUpdateAbilities()` ran (flight toggled); the client
+    /// sends `player_abilities` and clears it.
+    pub abilities_changed: bool,
     first_tick: bool,
     /// `stuckSpeedMultiplier`: set by a cobweb (or the like) this tick,
     /// applied to the next move.
@@ -245,6 +251,8 @@ impl Player {
             fall_flying: false,
             has_elytra: false,
             started_fall_flying: false,
+            jump_trigger_time: 0,
+            abilities_changed: false,
             first_tick: true,
             stuck_speed_multiplier: Vec3::ZERO,
             movements: Vec::new(),
@@ -561,11 +569,41 @@ impl Player {
             }
         }
 
-        // (Creative/spectator flight toggling is not modelled.)
+        // Creative flight: a spectator is always flying; otherwise a second
+        // fresh jump press inside the trigger window flips it. (No vehicles
+        // and no auto-jump here, so `wasAutoJump` is false and the vehicle
+        // test passes.)
+        let mut just_toggled_creative_flight = false;
+        if self.abilities.may_fly {
+            if self.spectator {
+                if !self.abilities.flying {
+                    self.abilities.flying = true;
+                    just_toggled_creative_flight = true;
+                    self.abilities_changed = true;
+                }
+            } else if !was_jumping && self.key_presses.jump {
+                if self.jump_trigger_time == 0 {
+                    self.jump_trigger_time = 7;
+                } else if !self.swimming {
+                    self.abilities.flying = !self.abilities.flying;
+                    if self.abilities.flying && self.on_ground {
+                        self.jump_from_ground(ctx);
+                    }
+                    just_toggled_creative_flight = true;
+                    self.abilities_changed = true;
+                    self.jump_trigger_time = 0;
+                }
+            }
+        }
 
         // A fresh press of jump in the air opens the elytra.
         self.started_fall_flying = false;
-        if self.key_presses.jump && !was_jumping && !self.on_climbable(ctx) && self.try_to_start_fall_flying() {
+        if self.key_presses.jump
+            && !just_toggled_creative_flight
+            && !was_jumping
+            && !self.on_climbable(ctx)
+            && self.try_to_start_fall_flying()
+        {
             self.started_fall_flying = true;
         }
 
@@ -574,7 +612,28 @@ impl Player {
             self.delta_movement = self.delta_movement.add(Vec3::new(0.0, -0.04f32 as f64, 0.0));
         }
 
+        // Flying up and down.
+        if self.abilities.flying {
+            let mut input_ya = 0i32;
+            if self.key_presses.shift {
+                input_ya -= 1;
+            }
+            if self.key_presses.jump {
+                input_ya += 1;
+            }
+            if input_ya != 0 {
+                let dy = (input_ya as f32 * self.abilities.flying_speed * 3.0f32) as f64;
+                self.delta_movement = self.delta_movement.add(Vec3::new(0.0, dy, 0.0));
+            }
+        }
+
         self.player_ai_step(ctx);
+
+        // Landing ends creative flight (spectators keep it).
+        if self.on_ground && self.abilities.flying && !self.spectator {
+            self.abilities.flying = false;
+            self.abilities_changed = true;
+        }
     }
 
     /// `LocalPlayer.isSprintingPossible`.
@@ -619,6 +678,9 @@ impl Player {
 
     /// `Player.aiStep` → `LivingEntity.aiStep`.
     fn player_ai_step(&mut self, ctx: &Ctx<'_>) {
+        if self.jump_trigger_time > 0 {
+            self.jump_trigger_time -= 1;
+        }
         if self.abilities.flying {
             self.fall_distance = 0.0;
         }
@@ -903,6 +965,20 @@ impl Player {
                 self.delta_movement = m.add(Vec3::new(0.0, (look_y - m.y) * multiplier, 0.0));
             }
         }
+        // Player.travel: flying keeps the vertical speed from before the
+        // move, damped by 0.6, whatever `super.travel` did to it.
+        if self.abilities.flying {
+            let original_movement_y = self.delta_movement.y;
+            self.living_travel(ctx, input);
+            let m = self.delta_movement;
+            self.delta_movement = Vec3::new(m.x, original_movement_y * 0.6, m.z);
+        } else {
+            self.living_travel(ctx, input);
+        }
+    }
+
+    /// `LivingEntity.travel`.
+    fn living_travel(&mut self, ctx: &Ctx<'_>, input: Vec3) {
         // shouldTravelInFluid: in a liquid and affected by fluids.
         if self.in_liquid() && !self.abilities.flying {
             self.travel_in_fluid(ctx, input);
