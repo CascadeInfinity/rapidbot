@@ -5,7 +5,7 @@ behave exactly like the vanilla client: byte-exact on the wire, tick-exact in
 physics and timing. 
 
 Targets **Minecraft 26.3** (protocol 777).
-
+[![Watch a one-minute video tour of rapidbot](https://gitdiagram.com/video-badge.svg)](https://gitdiagram.com/creator1116/rapidbot/video)
 ## Layout
 
 | Crate | Purpose |
