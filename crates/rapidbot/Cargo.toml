@@ -1,9 +1,15 @@
 [package]
 name = "rapidbot"
+version = "0.0.1-alpha"
 description = "Headless Minecraft bots that behave like the vanilla client and the person using it"
-version.workspace = true
+license = "MIT"
+repository = "https://github.com/creator1116/rapidbot"
+readme = "README.md"
+keywords = ["minecraft", "bot", "headless", "game", "automation", "client"]
+categories = ["network-programming", "game-development"]
+
+# Inherit edition and other workspace fields.
 edition.workspace = true
-license.workspace = true
 
 [dependencies]
 rapidbot-auth.workspace = true
