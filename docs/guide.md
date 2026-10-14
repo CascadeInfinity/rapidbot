@@ -71,6 +71,9 @@ keyboard and mouse. It gets a `TickContext`.
 | `ctx.attack_strength` | The attack charge, 0 to 1 |
 | `ctx.chat_open` | True while a chat line is being typed |
 
+`ctx.player.abilities.flying` is true when the player is in creative flight
+mode.
+
 ## What a controller can do
 
 A controller states intent. The input model turns it into timed mouse,
@@ -93,6 +96,56 @@ where to look: `interact::aim_point` for a block,
 
 `ctx.snap_look` sets the view instantly and bypasses the modeled mouse-input
 path; reserve it for tests.
+
+## Creative flight
+
+Creative flight is supported when the server grants the `may_fly` ability
+(in creative or spectator mode). The flight mechanics follow vanilla
+Minecraft 1.26.3 exactly.
+
+**Toggling flight:**
+
+- Double-tap the jump key within a 7-tick window (0.35 seconds) to start
+  flying.
+- Double-tap again to land and return to walking mode.
+- Spectators are automatically set to flying if they have the `may_fly`
+  permission.
+
+**Movement while flying:**
+
+- Hold the jump key to climb upward.
+- Hold the shift key to descend.
+- Movement keys (forward, back, left, right) work as usual for horizontal
+  movement.
+- Sprint while flying to move faster horizontally.
+
+**Landing:**
+
+- Flight ends automatically when the player touches the ground (for
+  non-spectators).
+- The bot sends a `PlayerAbilities` packet to the server whenever flight
+  state changes.
+
+**Using flight in a bot:**
+
+```rust
+impl Controller for MyLogic {
+    fn tick(&mut self, ctx: &mut TickContext<'_>) {
+        // Check if flying
+        if ctx.player.abilities.flying {
+            // Climb by holding jump
+            ctx.set_keys(Keys { jump: true, forward: true, ..Default::default() });
+        } else if ctx.player.abilities.may_fly {
+            // Double-tap jump to start flying
+            // (set jump: true for two consecutive ticks, then false)
+        }
+    }
+}
+```
+
+The `crates/client/examples/fly.rs` example demonstrates a complete flight
+sequence: double-tap to take off, climb, hover, sprint forward, descend, and
+land.
 
 ## Ready-made behaviour
 

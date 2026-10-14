@@ -596,6 +596,15 @@ pub mod serverbound {
     }
     packet!(ChunkBatchReceived, play, serverbound, CHUNK_BATCH_RECEIVED);
 
+    /// `ServerboundPlayerAbilitiesPacket`: sent by `LocalPlayer.onUpdateAbilities`
+    /// when creative flight is toggled.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+    pub struct PlayerAbilities {
+        /// 2 flying. (The other bits are server-owned.)
+        pub flags: u8,
+    }
+    packet!(PlayerAbilities, play, serverbound, PLAYER_ABILITIES);
+
     /// `ServerboundPlayerCommandPacket`.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
     pub struct PlayerCommand {

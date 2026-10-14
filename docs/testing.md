@@ -60,6 +60,7 @@ cargo run --release -p rapidbot-client --example chat -- localhost:25565 Walker 
 cargo run --release -p rapidbot-client --example course -- localhost:25565 Walker 130
 cargo run --release -p rapidbot-client --example dig -- localhost:25565 Walker 62 150 60
 cargo run --release -p rapidbot-client --example fight -- localhost:25565 Walker minecraft:husk
+cargo run --release -p rapidbot-client --example fly -- localhost:25565 Walker   # after `gamemode creative Walker`
 ```
 
 | Example | What it does |
@@ -71,6 +72,7 @@ cargo run --release -p rapidbot-client --example fight -- localhost:25565 Walker
 | `course` | Walks along +x through water and ladders; glides when wearing an elytra |
 | `dig` | Digs the listed blocks from where it stands |
 | `fight` | Fights the nearest entity of a kind, or the nearest player |
+| `fly` | Creative flight: double-tap toggle, climb, hover, sprint, land |
 
 ## What to look for
 

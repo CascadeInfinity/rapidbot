@@ -4,8 +4,8 @@
 use rapidbot_physics::math::Vec3;
 use rapidbot_physics::{Keys, Player};
 use rapidbot_protocol::packets::play::serverbound::{
-    MovePlayerPos, MovePlayerPosRot, MovePlayerRot, MovePlayerStatusOnly, PlayerCommand, PlayerCommandAction,
-    PlayerInput,
+    MovePlayerPos, MovePlayerPosRot, MovePlayerRot, MovePlayerStatusOnly, PlayerAbilities, PlayerCommand,
+    PlayerCommandAction, PlayerInput,
 };
 use rapidbot_protocol::packets::play::{Input, PositionMoveRotation, move_flags, relative};
 
@@ -131,6 +131,12 @@ impl LocalPlayer {
     /// `LocalPlayer.sendChanges` for a player not riding anything.
     pub fn send_changes(&mut self, net: &PacketSender) {
         // Sent from aiStep, so ahead of everything sendChanges sends.
+        // `onUpdateAbilities`: creative flight was toggled.
+        if self.physics.abilities_changed {
+            self.physics.abilities_changed = false;
+            let flags = if self.physics.abilities.flying { 2 } else { 0 };
+            net.send(&PlayerAbilities { flags });
+        }
         if self.physics.started_fall_flying {
             self.physics.started_fall_flying = false;
             net.send(&PlayerCommand { entity_id: self.id, action: PlayerCommandAction::StartFallFlying, data: 0 });
