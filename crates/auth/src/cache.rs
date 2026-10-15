@@ -1,5 +1,7 @@
 //! On-disk token cache. It holds live credentials: keep it private.
 
+use std::fs::OpenOptions;
+use std::io::Write;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
@@ -45,8 +47,44 @@ impl TokenCache {
             std::fs::create_dir_all(parent)?;
         }
         let tmp = path.with_extension("tmp");
-        std::fs::write(&tmp, serde_json::to_string_pretty(self)?)?;
+        let contents = serde_json::to_string_pretty(self)?;
+        let mut options = OpenOptions::new();
+        options.create(true).truncate(true).write(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options.open(&tmp)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        }
+        file.write_all(contents.as_bytes())?;
         std::fs::rename(tmp, path)?;
         Ok(())
+    }
+}
+
+#[cfg(unix)]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn save_restricts_cache_permissions_before_reusing_temp_file() {
+        let dir = std::env::temp_dir().join(format!("rapidbot-cache-{}", Uuid::new_v4()));
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("tokens.json");
+        let tmp = path.with_extension("tmp");
+        std::fs::write(&tmp, b"stale contents").unwrap();
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        TokenCache::default().save(&path).unwrap();
+
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
