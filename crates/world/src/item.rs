@@ -232,6 +232,19 @@ fn count(buf: &mut &[u8]) -> Result<usize, DecodeError> {
     usize::try_from(n).map_err(|_| DecodeError::NegativeLength(n))
 }
 
+fn holder_set_count(buf: &mut &[u8]) -> Result<Option<usize>, DecodeError> {
+    let encoded = read_var_int(buf)?;
+    let encoded = usize::try_from(encoded).map_err(|_| DecodeError::NegativeLength(encoded))?;
+    if encoded == 0 {
+        return Ok(None);
+    }
+    let count = encoded - 1;
+    if count > buf.len() {
+        return Err(DecodeError::UnexpectedEof);
+    }
+    Ok(Some(count))
+}
+
 fn skip(shape: &Shape, buf: &mut &[u8], data: &ItemData) -> Result<(), DecodeError> {
     match shape {
         VarInt => {
@@ -293,13 +306,12 @@ fn skip(shape: &Shape, buf: &mut &[u8], data: &ItemData) -> Result<(), DecodeErr
             }
         }
         HolderSet => {
-            let n = read_var_int(buf)? - 1;
-            if n == -1 {
-                skip(&Str, buf, data)?;
-            } else {
-                for _ in 0..n {
+            if let Some(count) = holder_set_count(buf)? {
+                for _ in 0..count {
                     read_var_int(buf)?;
                 }
+            } else {
+                skip(&Str, buf, data)?;
             }
         }
         Dispatch(options) => {
@@ -520,11 +532,10 @@ pub enum BlockSet {
 
 impl BlockSet {
     fn decode(buf: &mut &[u8]) -> Result<Self, DecodeError> {
-        let n = read_var_int(buf)? - 1;
-        if n == -1 {
+        let Some(count) = holder_set_count(buf)? else {
             return Ok(BlockSet::Tag(String::decode(buf)?));
-        }
-        (0..n).map(|_| read_var_int(buf).map(|id| id as u32)).collect::<Result<_, _>>().map(BlockSet::Ids)
+        };
+        (0..count).map(|_| read_var_int(buf).map(|id| id as u32)).collect::<Result<_, _>>().map(BlockSet::Ids)
     }
 
     pub fn contains(&self, block: u32, tags: &crate::tags::Tags) -> bool {
@@ -669,5 +680,34 @@ impl ItemData {
         let start = *buf;
         skip(shape, buf, self)?;
         Ok((ty as u32, start[..start.len() - buf.len()].to_vec()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rapidbot_buf::Encode;
+
+    #[test]
+    fn holder_set_counts_reject_negative_and_oversized_values() {
+        for encoded in [i32::MIN, i32::MAX] {
+            let is_expected_error = |error: &DecodeError| {
+                if encoded < 0 {
+                    matches!(error, DecodeError::NegativeLength(value) if *value == encoded)
+                } else {
+                    matches!(error, DecodeError::UnexpectedEof)
+                }
+            };
+
+            let mut skip_data = Vec::new();
+            rapidbot_buf::VarInt(encoded).encode(&mut skip_data);
+            let mut skip_data = skip_data.as_slice();
+            assert!(matches!(skip(&HolderSet, &mut skip_data, ItemData::get()), Err(error) if is_expected_error(&error)));
+
+            let mut decode_data = Vec::new();
+            rapidbot_buf::VarInt(encoded).encode(&mut decode_data);
+            let mut decode_data = decode_data.as_slice();
+            assert!(matches!(BlockSet::decode(&mut decode_data), Err(error) if is_expected_error(&error)));
+        }
     }
 }
