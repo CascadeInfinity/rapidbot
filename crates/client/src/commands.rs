@@ -57,11 +57,20 @@ impl CommandTree {
     pub fn decode(mut body: &[u8]) -> Result<Self, DecodeError> {
         let buf = &mut body;
         let count = VarInt::decode(buf)?.0;
-        let mut nodes = Vec::with_capacity(count.max(0) as usize);
+        let count = usize::try_from(count).map_err(|_| DecodeError::NegativeLength(count))?;
+        // Each node needs at least a flags byte and a child-count VarInt;
+        // the root reference needs at least one more byte.
+        if count > buf.len().saturating_sub(1) / 2 {
+            return Err(DecodeError::UnexpectedEof);
+        }
+        let mut nodes = Vec::with_capacity(count);
         for _ in 0..count {
             let flags = u8::decode(buf)?;
-            let children = Vec::<VarInt>::decode(buf)?.into_iter().map(|v| v.0 as usize).collect();
-            let redirect = if flags & 8 != 0 { Some(VarInt::decode(buf)?.0 as usize) } else { None };
+            let children = Vec::<VarInt>::decode(buf)?
+                .into_iter()
+                .map(|v| node_reference(v.0, count))
+                .collect::<Result<_, _>>()?;
+            let redirect = if flags & 8 != 0 { Some(node_reference(VarInt::decode(buf)?.0, count)?) } else { None };
             let kind = match flags & 3 {
                 2 => {
                     let name = String::decode(buf)?;
@@ -77,7 +86,7 @@ impl CommandTree {
             };
             nodes.push(Node { kind, children, redirect });
         }
-        let root = VarInt::decode(buf)?.0 as usize;
+        let root = node_reference(VarInt::decode(buf)?.0, count)?;
         Ok(Self { nodes, root })
     }
 
@@ -186,6 +195,14 @@ impl CommandTree {
         };
         (length > 0).then_some(start + length)
     }
+}
+
+fn node_reference(value: i32, node_count: usize) -> Result<usize, DecodeError> {
+    let index = usize::try_from(value).map_err(|_| DecodeError::InvalidDiscriminant { ty: "command node reference", value })?;
+    if index >= node_count {
+        return Err(DecodeError::InvalidDiscriminant { ty: "command node reference", value });
+    }
+    Ok(index)
 }
 
 /// `StringReader.isAllowedInUnquotedString`.
@@ -358,5 +375,43 @@ mod tests {
         assert!(CommandTree::default().signable_arguments("msg Steve hi").is_empty());
         // Behind a redirect to the root nothing is signed.
         assert!(t.signable_arguments("execute msg Steve hi").is_empty());
+    }
+
+    #[test]
+    fn decode_bounds_node_count_by_packet_size() {
+        let mut b = Vec::new();
+        VarInt(i32::MAX).encode(&mut b);
+        assert!(matches!(CommandTree::decode(&b), Err(DecodeError::UnexpectedEof)));
+
+        let mut b = Vec::new();
+        VarInt(-1).encode(&mut b);
+        assert!(matches!(CommandTree::decode(&b), Err(DecodeError::NegativeLength(-1))));
+    }
+
+    #[test]
+    fn decode_rejects_invalid_node_references() {
+        let mut root = Vec::new();
+        VarInt(1).encode(&mut root);
+        node(&mut root, 0, &[], None, None, None);
+        VarInt(1).encode(&mut root);
+        assert!(matches!(CommandTree::decode(&root), Err(DecodeError::InvalidDiscriminant { ty: "command node reference", value: 1 })));
+
+        let mut negative_root = Vec::new();
+        VarInt(1).encode(&mut negative_root);
+        node(&mut negative_root, 0, &[], None, None, None);
+        VarInt(-1).encode(&mut negative_root);
+        assert!(matches!(CommandTree::decode(&negative_root), Err(DecodeError::InvalidDiscriminant { ty: "command node reference", value: -1 })));
+
+        let mut child = Vec::new();
+        VarInt(1).encode(&mut child);
+        node(&mut child, 0, &[1], None, None, None);
+        VarInt(0).encode(&mut child);
+        assert!(matches!(CommandTree::decode(&child), Err(DecodeError::InvalidDiscriminant { ty: "command node reference", value: 1 })));
+
+        let mut redirect = Vec::new();
+        VarInt(1).encode(&mut redirect);
+        node(&mut redirect, 0, &[], Some(1), None, None);
+        VarInt(0).encode(&mut redirect);
+        assert!(matches!(CommandTree::decode(&redirect), Err(DecodeError::InvalidDiscriminant { ty: "command node reference", value: 1 })));
     }
 }
