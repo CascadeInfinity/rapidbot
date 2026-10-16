@@ -80,6 +80,9 @@ impl Container {
 fn read_palette(buf: &mut &[u8]) -> Result<Vec<StateId>, DecodeError> {
     let size = VarInt::decode(buf)?.0;
     let size = usize::try_from(size).map_err(|_| DecodeError::NegativeLength(size))?;
+    if size > buf.len() {
+        return Err(DecodeError::UnexpectedEof);
+    }
     (0..size).map(|_| VarInt::decode(buf).map(|v| v.0 as StateId)).collect()
 }
 
@@ -178,6 +181,8 @@ impl Chunk {
 
 #[cfg(test)]
 mod tests {
+    use rapidbot_buf::Encode;
+
     use super::*;
 
     #[test]
@@ -187,6 +192,17 @@ mod tests {
         assert_eq!(ceillog2(16), 4);
         assert_eq!(ceillog2(17), 5);
         assert_eq!(ceillog2(35723), 16);
+    }
+
+    #[test]
+    fn palette_count_cannot_exceed_remaining_bytes() {
+        let mut oversized = Vec::new();
+        VarInt(i32::MAX).encode(&mut oversized);
+        assert!(matches!(read_palette(&mut oversized.as_slice()), Err(DecodeError::UnexpectedEof)));
+
+        let mut negative = Vec::new();
+        VarInt(-1).encode(&mut negative);
+        assert!(matches!(read_palette(&mut negative.as_slice()), Err(DecodeError::NegativeLength(-1))));
     }
 
     #[test]
