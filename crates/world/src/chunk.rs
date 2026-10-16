@@ -168,6 +168,7 @@ impl Chunk {
     pub fn read_packet(mut buf: &[u8], state_count: usize, biome_count: usize) -> Result<Self, DecodeError> {
         // Heightmaps: map of VarInt type -> long array.
         let heightmaps = VarInt::decode(&mut buf)?.0;
+        let heightmaps = usize::try_from(heightmaps).map_err(|_| DecodeError::NegativeLength(heightmaps))?;
         for _ in 0..heightmaps {
             VarInt::decode(&mut buf)?;
             let len = VarInt::decode(&mut buf)?.0;
@@ -230,5 +231,15 @@ mod tests {
         s.set(3, 1, 7, 42);
         assert_eq!(s.get(3, 1, 7), 42);
         assert_eq!(s.get(3, 0, 7), 1);
+    }
+
+    #[test]
+    fn heightmap_count_rejects_negative_values() {
+        let negative = rapidbot_buf::to_bytes(&VarInt(-1));
+        assert!(matches!(Chunk::read_packet(&negative, 1, 1), Err(DecodeError::NegativeLength(-1))));
+
+        let mut empty = rapidbot_buf::to_bytes(&VarInt(0));
+        empty.extend(rapidbot_buf::to_bytes(&rapidbot_buf::ByteArray::default()));
+        assert!(Chunk::read_packet(&empty, 1, 1).unwrap().sections.is_empty());
     }
 }
