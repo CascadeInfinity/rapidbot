@@ -61,6 +61,9 @@ impl Decode for OptionalGameType {
         if v == 0 {
             return Ok(Self(None));
         }
+        if !(1..=4).contains(&v) {
+            return Err(rapidbot_buf::DecodeError::InvalidDiscriminant { ty: "optional game type", value: v });
+        }
         let mut id: &[u8] = &[(v - 1) as u8];
         GameType::decode(&mut id).map(|g| Self(Some(g)))
     }
@@ -854,6 +857,26 @@ pub mod serverbound {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn optional_game_type_validates_full_varint() {
+        for (wire, expected) in [
+            (0, OptionalGameType(None)),
+            (1, OptionalGameType(Some(GameType::Survival))),
+            (4, OptionalGameType(Some(GameType::Spectator))),
+        ] {
+            let bytes = rapidbot_buf::to_bytes(&rapidbot_buf::VarInt(wire));
+            assert_eq!(OptionalGameType::decode(&mut bytes.as_slice()), Ok(expected));
+        }
+
+        for wire in [5, 257, i32::MAX, i32::MIN] {
+            let bytes = rapidbot_buf::to_bytes(&rapidbot_buf::VarInt(wire));
+            assert!(matches!(
+                OptionalGameType::decode(&mut bytes.as_slice()),
+                Err(rapidbot_buf::DecodeError::InvalidDiscriminant { ty: "optional game type", value }) if value == wire
+            ));
+        }
+    }
 
     #[test]
     fn lp_vec3_roundtrip() {
